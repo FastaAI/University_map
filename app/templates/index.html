@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>전국의 대학교 위치 시각화</title>
+
+  <style>
+    body { font-family: system-ui, AppleSDGothicNeo, Pretendard, sans-serif; margin:0; background:#f7f7f8; }
+    header { background:#111827; color:#fff; padding:14px 18px; }
+    header h1 { margin:0; font-size:18px; }
+    main { padding:16px; display:grid; grid-template-columns:360px 1fr; gap:16px; }
+    .panel { background:#fff; border-radius:14px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,.06); }
+    label { font-size:12px; color:#6b7280; display:block; margin-bottom:6px; }
+    input, select { width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:10px; }
+    button { margin-top:10px; width:100%; padding:10px 12px; background:#111827; color:#fff; border:0; border-radius:10px; cursor:pointer; font-weight:800; }
+    button:hover { opacity:.95; }
+    .map { min-height:560px; height: calc(100vh - 140px); }
+    .msg { margin-top:10px; font-size:13px; background:#f1f5f9; border-radius:10px; padding:10px; }
+
+    .section-title { font-weight:900; font-size:14px; margin:12px 0 8px; }
+    .btn-ghost { background:#334155; }
+
+    .tabs { display:flex; gap:8px; margin-bottom:12px; }
+    .tab-btn {
+      flex:1; padding:10px 12px; border:1px solid #e5e7eb; background:#fff;
+      cursor:pointer; border-radius:12px; font-weight:900; color:#111827;
+    }
+    .tab-btn.active { border-color:#111827; }
+    .tab-pane { display:none; }
+    .tab-pane.active { display:block; }
+
+    .suggest {
+      list-style:none; padding:0; margin-top:6px;
+      border:1px solid #e5e7eb; border-radius:10px; background:#fff;
+      max-height:180px; overflow:auto; display:none; position:relative; z-index:9999;
+    }
+    .suggest li { padding:8px 12px; cursor:pointer; }
+    .suggest li:hover { background:#f3f4f6; }
+
+    .box { margin-top:12px; border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; }
+    .grid { display:grid; grid-template-columns:1fr; gap:8px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .small { font-size:12px; color:#6b7280; }
+
+    .chip-wrap { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .chip { border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:8px 10px; font-size:12px; cursor:pointer; user-select:none; }
+    .chip:hover { background:#f8fafc; }
+    .chip .x { margin-left:8px; font-weight:900; color:#64748b; }
+
+    .icon-btn {
+      width:44px; height:44px; margin-top:0; border-radius:12px;
+      background:#fff; color:#111827; border:1px solid #e5e7eb; font-weight:900; cursor:pointer;
+    }
+
+    .cards { display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:12px; }
+    .card .title { font-weight:900; margin-bottom:6px; }
+    .kv { font-size:13px; color:#111827; line-height:1.4; }
+    .kv span { color:#6b7280; }
+
+    .chat-box {
+      height:360px; border:1px solid #e5e7eb; border-radius:12px; padding:10px;
+      overflow-y:auto; background:#fafafa;
+    }
+    .chat-msg { margin:8px 0; line-height:1.35; font-size:14px; white-space:pre-wrap; word-break:break-word; }
+    .chat-msg.user { text-align:right; }
+    .chat-msg .bubble { display:inline-block; padding:8px 10px; border-radius:12px; max-width:92%; }
+    .chat-msg.user .bubble { background:#e8f0ff; }
+    .chat-msg.bot .bubble { background:#fff; border:1px solid #eee; }
+    .chat-input-row { display:flex; gap:8px; margin-top:10px; }
+    .chat-input-row input { flex:1; margin-top:0; }
+    .chat-input-row button { width:auto; margin-top:0; padding:10px 14px; border-radius:12px; }
+
+    .action-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .action-btn {
+      width:auto; margin-top:0; padding:8px 10px; border-radius:12px;
+      border:1px solid #e5e7eb; background:#fff; color:#111827; cursor:pointer; font-weight:900;
+    }
+    .action-btn:hover { background:#f8fafc; }
+  </style>
+</head>
+
+<body>
+  <header><h1>전국의 대학교 위치 시각화</h1></header>
+
+  <main>
+    <section class="panel">
+      <div class="tabs">
+        <button id="tabBtnTools" class="tab-btn active" type="button">🧰 Tools</button>
+        <button id="tabBtnChat" class="tab-btn" type="button">💬 Gemini</button>
+      </div>
+
+      <div id="tabTools" class="tab-pane active">
+        <div class="section-title">🔍 기본 검색</div>
+        <form id="searchForm2D" method="get" action="/search" autocomplete="off">
+          <label for="search-input">학교명 입력</label>
+          <div class="row">
+            <input id="search-input" type="text" name="name" value="{{ search or '' }}" placeholder="예: 서 / 서울대 / 연대 / 한양대"/>
+            <button id="favAddBtn" class="icon-btn" type="button" title="즐겨찾기 추가">★</button>
+          </div>
+          <ul id="suggest-list" class="suggest"></ul>
+          <button type="submit">2D 지도에서 보기</button>
+        </form>
+
+        <form id="searchForm3D" method="get" action="/3d" style="margin-top:8px;">
+          <input id="search-hidden-3d" type="hidden" name="name" value="{{ search or '' }}">
+          <button type="submit" class="btn-ghost">🌍 3D(브이월드)로 보기</button>
+        </form>
+
+        <div class="box" style="background:#fff;">
+          <div class="section-title" style="margin-top:0;">🕘 최근 검색</div>
+          <div id="recentWrap" class="chip-wrap"></div>
+
+          <div class="section-title">⭐ 즐겨찾기</div>
+          <div id="favWrap" class="chip-wrap"></div>
+        </div>
+
+        <div class="box">
+          <div class="section-title" style="margin-top:0;">🧩 지역(region) 필터 브라우징</div>
+          <form method="get" action="/browse">
+            <div class="grid">
+              <div>
+                <label>region</label>
+                <select name="filter_region">
+                  <option value="">ALL</option>
+                  {% for r in region_options %}
+                    <option value="{{ r }}" {% if filter_region == r %}selected{% endif %}>{{ r }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <button type="submit">지역 필터 적용해서 지도에 보기</button>
+              <div class="small">엑셀에 region 컬럼 없으면 주소 기반으로 자동 추정</div>
+            </div>
+          </form>
+        </div>
+
+        <div class="box">
+          <div class="section-title" style="margin-top:0;">🆚 대학 비교 (2개)</div>
+          <form id="compareForm" method="get" action="/compare" autocomplete="off">
+            <div class="grid">
+              <div>
+                <label for="cmp-a">A</label>
+                <input id="cmp-a" type="text" name="a" value="{{ cmp_a or '' }}" placeholder="예: 서울대"/>
+                <ul id="cmp-a-suggest" class="suggest"></ul>
+              </div>
+              <div>
+                <label for="cmp-b">B</label>
+                <input id="cmp-b" type="text" name="b" value="{{ cmp_b or '' }}" placeholder="예: 연대"/>
+                <ul id="cmp-b-suggest" class="suggest"></ul>
+              </div>
+              <button type="submit">비교 + 지도에 표시</button>
+            </div>
+          </form>
+
+          {% if compare %}
+            <div class="cards">
+              <div class="card">
+                <div class="title">A: {{ compare.A.학교이름 }}</div>
+                <div class="kv"><span>주소</span> {{ compare.A.주소 }}</div>
+                <div class="kv"><span>region</span> {{ compare.A.region }}</div>
+              </div>
+              <div class="card">
+                <div class="title">B: {{ compare.B.학교이름 }}</div>
+                <div class="kv"><span>주소</span> {{ compare.B.주소 }}</div>
+                <div class="kv"><span>region</span> {{ compare.B.region }}</div>
+              </div>
+              <div class="card">
+                <div class="title">거리</div>
+                <div class="kv"><span>직선거리</span> {{ compare.distance_km }} km</div>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="box">
+          <div class="section-title" style="margin-top:0;">📍 주변 대학 찾기</div>
+          <form id="nearForm" method="get" action="/nearby" autocomplete="off">
+            <div class="grid">
+              <div>
+                <label for="near-name">기준 학교</label>
+                <input id="near-name" type="text" name="name" value="{{ near_name or '' }}" placeholder="예: 서울대"/>
+                <ul id="near-suggest" class="suggest"></ul>
+              </div>
+              <div>
+                <label for="near-radius">반경 (km)</label>
+                <input id="near-radius" type="number" min="1" max="50" step="1" name="radius_km" value="{{ near_radius or '5' }}">
+              </div>
+              <button type="submit">반경 내 대학 지도에 표시</button>
+            </div>
+          </form>
+        </div>
+
+        {% if message %}
+          <div class="msg">{{ message }}</div>
+        {% endif %}
+      </div>
+
+      <div id="tabChat" class="tab-pane">
+        <div class="section-title">💬 Gemini 상담</div>
+        <div class="chat-box" id="chatBox"></div>
+
+        <div class="chat-input-row">
+          <input id="chatInput" type="text" placeholder="예) 서울대 vs 동서울대 헷갈려 / 컴공 관심인데 어디부터?" />
+          <button id="chatSend" type="button">Send</button>
+        </div>
+
+        <div class="small" style="margin-top:10px;">
+          답변 아래 버튼으로 2D/3D 바로 이동 가능. (GEMINI_API_KEY 필요)
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="map">
+        {% if map %}
+          {{ map | safe }}
+        {% else %}
+          <div class="msg">왼쪽에서 기능을 실행하면 지도가 나타납니다.</div>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabBtnTools = document.getElementById("tabBtnTools");
+    const tabBtnChat = document.getElementById("tabBtnChat");
+    const tabTools = document.getElementById("tabTools");
+    const tabChat = document.getElementById("tabChat");
+    function setActive(which){
+      const tools = which === "tools";
+      tabBtnTools.classList.toggle("active", tools);
+      tabBtnChat.classList.toggle("active", !tools);
+      tabTools.classList.toggle("active", tools);
+      tabChat.classList.toggle("active", !tools);
+    }
+    tabBtnTools.addEventListener("click", ()=>setActive("tools"));
+    tabBtnChat.addEventListener("click", ()=>setActive("chat"));
+
+    const RECENT_KEY = "uni_recent_search_v1";
+    const FAV_KEY = "uni_favorites_v1";
+    const CHAT_KEY = "uni_chat_history_v2";
+
+    function safeJsonParse(v, fb){ try { return JSON.parse(v); } catch { return fb; } }
+    function loadList(key){ return safeJsonParse(localStorage.getItem(key) || "[]", []); }
+    function saveList(key, arr){ localStorage.setItem(key, JSON.stringify(arr)); }
+    function pushUnique(key, value, maxLen=12){
+      value = (value || "").trim();
+      if(!value) return;
+      let arr = loadList(key).filter(x => x !== value);
+      arr.unshift(value);
+      if(arr.length > maxLen) arr = arr.slice(0, maxLen);
+      saveList(key, arr);
+    }
+    function removeItem(key, value){ saveList(key, loadList(key).filter(x => x !== value)); }
+
+    async function fetchSuggest(q){
+      const res = await fetch(`/suggest?query=${encodeURIComponent(q)}`);
+      if(!res.ok) return [];
+      const data = await res.json();
+      return data.suggestions || [];
+    }
+    function clearSuggest(ul){ ul.innerHTML = ""; ul.style.display = "none"; }
+    async function handleSuggest(inputEl, ulEl, onPick){
+      const q = inputEl.value.trim();
+      if(!q){ clearSuggest(ulEl); return; }
+      const items = await fetchSuggest(q);
+      ulEl.innerHTML = "";
+      items.forEach(name=>{
+        const li=document.createElement("li");
+        li.textContent=name;
+        li.addEventListener("click", ()=>{ onPick(name); clearSuggest(ulEl); });
+        ulEl.appendChild(li);
+      });
+      ulEl.style.display = items.length ? "block" : "none";
+    }
+
+    const input = document.getElementById("search-input");
+    const list = document.getElementById("suggest-list");
+    const hidden3d = document.getElementById("search-hidden-3d");
+    const favAddBtn = document.getElementById("favAddBtn");
+    function syncHidden3D(){ hidden3d.value = input.value || ""; }
+
+    input.addEventListener("input", syncHidden3D);
+    input.addEventListener("input", ()=>handleSuggest(input, list, (name)=>{ input.value=name; syncHidden3D(); }));
+    document.addEventListener("click", (e)=>{ if(e.target !== input && !list.contains(e.target)) clearSuggest(list); });
+
+    const recentWrap = document.getElementById("recentWrap");
+    const favWrap = document.getElementById("favWrap");
+    function makeChip(text, {onClick, onRemove}={}){
+      const chip=document.createElement("div");
+      chip.className="chip";
+      chip.textContent=text;
+      if(onRemove){
+        const x=document.createElement("span");
+        x.className="x";
+        x.textContent="×";
+        x.addEventListener("click",(ev)=>{ ev.stopPropagation(); onRemove(); });
+        chip.appendChild(x);
+      }
+      if(onClick) chip.addEventListener("click", onClick);
+      return chip;
+    }
+    function renderRecent(){
+      recentWrap.innerHTML="";
+      const items=loadList(RECENT_KEY);
+      if(!items.length){ recentWrap.appendChild(makeChip("최근 검색 없음")); return; }
+      items.forEach(q=>recentWrap.appendChild(makeChip(q,{onClick:()=>{ input.value=q; syncHidden3D(); input.focus(); }})));
+    }
+    function renderFavs(){
+      favWrap.innerHTML="";
+      const items=loadList(FAV_KEY);
+      if(!items.length){ favWrap.appendChild(makeChip("즐겨찾기 없음")); return; }
+      items.forEach(q=>favWrap.appendChild(makeChip(q,{
+        onClick:()=>{ input.value=q; syncHidden3D(); input.focus(); },
+        onRemove:()=>{ removeItem(FAV_KEY,q); renderFavs(); }
+      })));
+    }
+    renderRecent(); renderFavs();
+
+    document.getElementById("searchForm2D").addEventListener("submit", ()=>{ pushUnique(RECENT_KEY, input.value); renderRecent(); });
+    document.getElementById("searchForm3D").addEventListener("submit", ()=>{ pushUnique(RECENT_KEY, hidden3d.value || input.value); renderRecent(); });
+    favAddBtn.addEventListener("click", ()=>{
+      const q=(input.value||"").trim();
+      if(!q) return;
+      pushUnique(FAV_KEY, q, 50);
+      renderFavs();
+    });
+
+    const cmpA=document.getElementById("cmp-a");
+    const cmpB=document.getElementById("cmp-b");
+    const cmpAS=document.getElementById("cmp-a-suggest");
+    const cmpBS=document.getElementById("cmp-b-suggest");
+    const nearName=document.getElementById("near-name");
+    const nearS=document.getElementById("near-suggest");
+
+    cmpA.addEventListener("input", ()=>handleSuggest(cmpA, cmpAS, (name)=>{ cmpA.value=name; }));
+    cmpB.addEventListener("input", ()=>handleSuggest(cmpB, cmpBS, (name)=>{ cmpB.value=name; }));
+    nearName.addEventListener("input", ()=>handleSuggest(nearName, nearS, (name)=>{ nearName.value=name; }));
+
+    document.addEventListener("click",(e)=>{
+      if(e.target !== cmpA && !cmpAS.contains(e.target)) clearSuggest(cmpAS);
+      if(e.target !== cmpB && !cmpBS.contains(e.target)) clearSuggest(cmpBS);
+      if(e.target !== nearName && !nearS.contains(e.target)) clearSuggest(nearS);
+    });
+
+    const chatBox=document.getElementById("chatBox");
+    const chatInput=document.getElementById("chatInput");
+    const chatSend=document.getElementById("chatSend");
+
+    function appendChat(role, text){
+      const wrap=document.createElement("div");
+      wrap.className="chat-msg " + role;
+      const bubble=document.createElement("div");
+      bubble.className="bubble";
+      bubble.textContent=text;
+      wrap.appendChild(bubble);
+      chatBox.appendChild(wrap);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return wrap;
+    }
+
+    function appendActions(actions){
+      if(!actions || !actions.length) return;
+      const row=document.createElement("div");
+      row.className="action-row";
+      actions.forEach(a=>{
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.className="action-btn";
+        btn.textContent=a.label || "Open";
+        btn.addEventListener("click", ()=>{
+          const q=(a.query||"").trim();
+          if(a.type==="open3d"){
+            pushUnique(RECENT_KEY, q); renderRecent();
+            window.location.href = `/3d?name=${encodeURIComponent(q)}`;
+          } else if(a.type==="open2d"){
+            pushUnique(RECENT_KEY, q); renderRecent();
+            window.location.href = `/search?name=${encodeURIComponent(q)}`;
+          }
+        });
+        row.appendChild(btn);
+      });
+      const last=chatBox.lastChild;
+      if(last) last.appendChild(row);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    let chatHistory = safeJsonParse(localStorage.getItem(CHAT_KEY) || "[]", []);
+    if(chatHistory.length === 0){
+      appendChat("bot","안녕! 예) '서울대 위치' / '동서울대랑 헷갈려' / '컴공 관심인데 어디부터?'");
+    } else {
+      for(const m of chatHistory) appendChat(m.role, m.text);
+    }
+
+    async function sendChat(){
+      const msg=(chatInput.value||"").trim();
+      if(!msg) return;
+
+      appendChat("user", msg);
+      chatHistory.push({role:"user", text:msg});
+      localStorage.setItem(CHAT_KEY, JSON.stringify(chatHistory.slice(-30)));
+      chatInput.value="";
+
+      const typing = appendChat("bot","typing...");
+
+      try{
+        const res = await fetch("/chat", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({message: msg, history: chatHistory.slice(-12)})
+        });
+        const data = await res.json();
+        const reply = (data.reply || "").trim() || "응답이 비어 있어.";
+        typing.querySelector(".bubble").textContent = reply;
+
+        chatHistory.push({role:"bot", text:reply});
+        localStorage.setItem(CHAT_KEY, JSON.stringify(chatHistory.slice(-30)));
+
+        appendActions(data.actions);
+      } catch(e){
+        typing.querySelector(".bubble").textContent = "서버 통신 오류. /chat 확인 + GEMINI_API_KEY 확인.";
+      }
+    }
+
+    chatSend.addEventListener("click", sendChat);
+    chatInput.addEventListener("keydown", (e)=>{ if(e.key==="Enter") sendChat(); });
+  </script>
+</body>
+</html>

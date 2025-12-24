@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>3D 대학 지도 (VWorld)</title>
+
+  <!-- ✅ 브이월드 WebGL 3D API 3.0 init -->
+  <script type="text/javascript"
+    src="https://map.vworld.kr/js/webglMapInit.js.do?version=3.0&apiKey=0168D7D6-3EC6-3C64-A691-149E7E7DD176"></script>
+
+  <style>
+    body { margin:0; font-family: system-ui, AppleSDGothicNeo, Pretendard, sans-serif; background:#0b1220; }
+    #topbar {
+      position: absolute; left: 12px; top: 12px; z-index: 9999;
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      padding:10px; border-radius:14px;
+      background: rgba(17, 24, 39, .88); border:1px solid rgba(255,255,255,.10);
+      color:#fff;
+    }
+    #topbar input {
+      width: 260px; padding:10px 12px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.20); background: rgba(255,255,255,.08);
+      color:#fff; outline:none;
+    }
+    #topbar button {
+      padding:10px 12px; border-radius:12px; border:0; cursor:pointer;
+      background:#111827; color:#fff; font-weight:900;
+    }
+    #topbar button:hover { opacity:.95; }
+    #msg {
+      max-width: 520px;
+      font-size: 13px;
+      padding:8px 10px;
+      border-radius:12px;
+      background: rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.10);
+    }
+    #vmap { position: absolute; inset: 0; }
+    #orbitBtn {
+      position:absolute; right:12px; top:12px; z-index:9999;
+      padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
+      background:#111827; color:#fff; cursor:pointer; font-weight:900;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="vmap"></div>
+
+  <div id="topbar">
+    <form method="get" action="/3d" style="display:flex; gap:8px; align-items:center; margin:0;">
+      <input name="name" value="{{ search or '' }}" placeholder="학교명 입력 (예: 서울대 / 연대)" />
+      <button type="submit">Search</button>
+      <button type="button" onclick="location.href='/'" style="background:#334155;">2D로</button>
+    </form>
+    <div id="msg">{{ message }}</div>
+  </div>
+
+  <button id="orbitBtn" type="button">⟳ 360° Rotate</button>
+
+  <script>
+    // =========================
+    // 0) 서버에서 온 값
+    // =========================
+    const INIT_LON = Number("{{ init_lon }}");
+    const INIT_LAT = Number("{{ init_lat }}");
+    const INIT_ALT = Number("{{ init_alt }}");
+    const KML_URL = "{{ kml_url or '' }}";
+
+    // =========================
+    // 1) VWorld 3D 지도 생성
+    // =========================
+    // VWorld 샘플에서 options 구조는 환경마다 조금씩 다를 수 있음.
+    // 기본: container를 vmap에 붙이고, center/zoom/tilt 정도만 쓰면 안정적으로 가는 편.
+    const options = {
+      mapId: "vmap",
+      initPosition: new vw.CameraPosition(
+        new vw.CoordZ(INIT_LON, INIT_LAT, INIT_ALT),
+        new vw.Direction(0, -35, 0)
+      ),
+      logo: true,
+      navigation: true
+    };
+
+    const map = new vw.Map();
+    map.setOption(options);
+    map.start();
+
+    // =========================
+    // 2) Cesium viewer 얻기 (브이월드 래퍼마다 노출이 달라서 안전하게)
+    // =========================
+    function getCesiumViewer() {
+      return (
+        (map && map.getCesiumViewer && map.getCesiumViewer()) ||
+        (map && map.getViewer && map.getViewer()) ||
+        (map && map.viewer) ||
+        (window.ws3d && window.ws3d.viewer) ||
+        (window.viewer) ||
+        null
+      );
+    }
+
+    // viewer가 바로 안 잡히는 경우가 있어서 약간 기다렸다가 재시도
+    function waitViewer(maxTry=30) {
+      return new Promise((resolve) => {
+        let t = 0;
+        const timer = setInterval(() => {
+          const v = getCesiumViewer();
+          t++;
+          if (v || t >= maxTry) {
+            clearInterval(timer);
+            resolve(v);
+          }
+        }, 100);
+      });
+    }
+
+    // =========================
+    // 3) KML 로드 + 클릭 확대 + 360도 회전
+    // =========================
+    let kmlDataSource = null;
+
+    let orbitOn = false;
+    let orbitTick = null;
+    let orbitTarget = null; // Cartesian3
+
+    function getScreenCenterTargetCartesian(viewer){
+      const canvas = viewer.scene.canvas;
+      const center = new Cesium.Cartesian2(canvas.clientWidth/2, canvas.clientHeight/2);
+      const ray = viewer.camera.getPickRay(center);
+      const cart = viewer.scene.globe.pick(ray, viewer.scene);
+      return cart || null;
+    }
+
+    function setOrbitTargetFromEntity(viewer, entity){
+      try {
+        const t = viewer.clock.currentTime;
+        const pos = entity && entity.position && entity.position.getValue(t);
+        if (pos) orbitTarget = pos;
+      } catch (e) {}
+    }
+
+    function flyToEntity(viewer, entity){
+      if (!viewer || !entity) return;
+
+      // Cesium에서 flyTo는 흔한 방식. :contentReference[oaicite:2]{index=2}
+      try {
+        viewer.flyTo(entity, {
+          duration: 1.15,
+          offset: new Cesium.HeadingPitchRange(
+            viewer.camera.heading,
+            Cesium.Math.toRadians(-35),
+            1100
+          )
+        });
+        setOrbitTargetFromEntity(viewer, entity);
+        return;
+      } catch (e) {}
+
+      // fallback: position 기반
+      const t = viewer.clock.currentTime;
+      const pos = entity.position && entity.position.getValue(t);
+      if (!pos) return;
+
+      viewer.camera.flyTo({ destination: pos, duration: 1.15 });
+      orbitTarget = pos;
+    }
+
+    function installClickZoom(viewer){
+      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+      handler.setInputAction(function(click){
+        const picked = viewer.scene.pick(click.position);
+
+        if (Cesium.defined(picked) && picked.id) {
+          flyToEntity(viewer, picked.id);
+          return;
+        }
+
+        // fallback: KML 엔티티 중 클릭 지점과 가장 가까운 핀 찾기
+        if (kmlDataSource && kmlDataSource.entities) {
+          const t = viewer.clock.currentTime;
+          const ray = viewer.camera.getPickRay(click.position);
+          const cart = viewer.scene.globe.pick(ray, viewer.scene);
+          if (!cart) return;
+
+          const carto = Cesium.Cartographic.fromCartesian(cart);
+          const clickLat = Cesium.Math.toDegrees(carto.latitude);
+          const clickLon = Cesium.Math.toDegrees(carto.longitude);
+
+          let best = null;
+          let bestDist = Infinity;
+
+          kmlDataSource.entities.values.forEach(ent => {
+            const p = ent.position && ent.position.getValue(t);
+            if (!p) return;
+            const c = Cesium.Cartographic.fromCartesian(p);
+            const lat = Cesium.Math.toDegrees(c.latitude);
+            const lon = Cesium.Math.toDegrees(c.longitude);
+            const d = Math.hypot(lat - clickLat, lon - clickLon);
+            if (d < bestDist) { bestDist = d; best = ent; }
+          });
+
+          if (best && bestDist < 0.01) {
+            flyToEntity(viewer, best);
+          }
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    }
+
+    function startOrbit(viewer){
+      if(!viewer) return;
+
+      if(!orbitTarget){
+        orbitTarget = getScreenCenterTargetCartesian(viewer);
+      }
+      if(!orbitTarget) return;
+
+      const range = Cesium.Cartesian3.distance(viewer.camera.position, orbitTarget);
+      const pitch = Cesium.Math.toRadians(-35);
+
+      viewer.camera.lookAt(
+        orbitTarget,
+        new Cesium.HeadingPitchRange(viewer.camera.heading, pitch, range)
+      );
+
+      const ORBIT_SPEED = Cesium.Math.toRadians(0.35);
+      orbitTick = function(){
+        viewer.camera.rotateRight(ORBIT_SPEED);
+      };
+
+      viewer.clock.onTick.addEventListener(orbitTick);
+      orbitOn = true;
+    }
+
+    function stopOrbit(viewer){
+      if(!viewer) return;
+      if(orbitTick){
+        viewer.clock.onTick.removeEventListener(orbitTick);
+        orbitTick = null;
+      }
+      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+      orbitOn = false;
+    }
+
+    async function boot(){
+      const viewer = await waitViewer(50);
+      if(!viewer){
+        document.getElementById("msg").textContent = "Cesium viewer 접근 실패(브이월드 초기화 확인 필요)";
+        return;
+      }
+
+      // KML 로드
+      if (KML_URL) {
+        try {
+          // 브이월드 3.0은 Cesium을 별도 선언 없이 일부 기능을 사용할 수 있다고 안내됨. :contentReference[oaicite:3]{index=3}
+          const ds = await Cesium.KmlDataSource.load(KML_URL, {
+            camera: viewer.scene.camera,
+            canvas: viewer.scene.canvas
+          });
+          kmlDataSource = ds;
+          viewer.dataSources.add(ds);
+
+          // 검색 결과 있으면 KML 전체로 한번 줌
+          try { await viewer.zoomTo(ds); } catch(e) {}
+        } catch (e) {
+          document.getElementById("msg").textContent = "KML 로드 실패: " + String(e);
+        }
+      }
+
+      // 핀 클릭 확대 설치
+      installClickZoom(viewer);
+
+      // 360° 회전 토글 버튼
+      const orbitBtn = document.getElementById("orbitBtn");
+      orbitBtn.addEventListener("click", ()=>{
+        if(orbitOn){
+          stopOrbit(viewer);
+          orbitBtn.textContent = "⟳ 360° Rotate";
+        } else {
+          startOrbit(viewer);
+          orbitBtn.textContent = "■ Stop";
+        }
+      });
+    }
+
+    boot();
+  </script>
+</body>
+</html>

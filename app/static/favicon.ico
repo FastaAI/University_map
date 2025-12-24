@@ -1,0 +1,11 @@
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+app = FastAPI()
+
+# static 폴더를 만들어서 favicon.ico 넣기
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello FastAPI"}
