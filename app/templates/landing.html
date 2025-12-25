@@ -136,6 +136,7 @@
       gap:10px;
       text-decoration:none;
       user-select:none;
+      -webkit-tap-highlight-color: transparent;
     }
     .btn:hover{filter:brightness(1.03)}
     .btn:active{transform:translateY(1px)}
@@ -182,7 +183,6 @@
       transition: filter .18s ease, box-shadow .18s ease;
     }
 
-    /* 버스트 때 레이더가 살짝 밝아지는 체감 */
     .radar.bursting{
       filter: brightness(1.16) saturate(1.1);
       box-shadow:
@@ -275,6 +275,8 @@
       height: 155px;
       overflow: auto;
       scrollbar-width: none;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
     }
     .scantext::-webkit-scrollbar{display:none}
 
@@ -283,18 +285,10 @@
     .scantext .ok{color:rgba(56,240,140,.95)}
     .scantext .warn{color:rgba(251,191,36,.98)}
     .scantext .err{color:rgba(251,113,133,.98)}
-    .scantext.flash{
-      animation: flash .22s ease;
-    }
-    @keyframes flash{
-      from{filter:brightness(1.45)}
-      to{filter:brightness(1)}
-    }
+    .scantext.flash{animation: flash .22s ease;}
+    @keyframes flash{from{filter:brightness(1.45)} to{filter:brightness(1)}}
 
-    /* ✅ "소리 없는 진동" (버스트 순간에 카드가 떨림) */
-    .card.shake{
-      animation: shake .55s linear;
-    }
+    .card.shake{animation: shake .55s linear;}
     @keyframes shake{
       0%{transform:translate3d(0,0,0)}
       10%{transform:translate3d(-1px,1px,0)}
@@ -314,6 +308,116 @@
       .shell{grid-template-columns:1fr}
       .right{padding:16px}
       h1{font-size:26px}
+    }
+
+    /* ✅ 한 손 조작 모드: 모바일 세로에서만 "레이더 위 / 버튼+설명 아래" */
+    @media (max-width: 560px) and (orientation: portrait){
+      body{overflow:auto}
+      .wrap{
+        padding:12px;
+        align-items:stretch;
+      }
+      .shell{
+        grid-template-columns:1fr;
+        gap:12px;
+      }
+
+      #rightCard{order:1}
+      #leftCard{order:2}
+
+      .right{padding:12px}
+      .radar{
+        width:min(92vw, 440px);
+      }
+
+      /* ✅ 모바일 로그: 더 작게 + 콘솔 느낌 */
+      .scantext{
+        left:12px; right:12px; bottom:12px;
+        padding:10px 10px;
+        font-size:10.5px;
+        line-height:1.45;
+        letter-spacing:-0.2px;
+        height: min(170px, 24dvh);
+      }
+
+      .scantext .line{
+        opacity:.94;
+        text-transform: none;
+        font-variant-ligatures: none; /* 콘솔 느낌(합자 방지) */
+      }
+
+      .left{
+        padding:14px;
+        padding-bottom: max(14px, env(safe-area-inset-bottom));
+      }
+      h1{
+        font-size:22px;
+        margin:10px 0 8px;
+      }
+      p{
+        font-size:13px;
+        line-height:1.55;
+        margin-bottom:10px;
+      }
+      .chips{margin:8px 0 10px; gap:6px}
+      .chip{padding:7px 10px; font-size:12px}
+
+      .actions{
+        gap:10px;
+        margin-top:10px;
+      }
+      .btn{
+        width:100%;
+        justify-content:center;
+        padding:14px 14px;
+        border-radius:16px;
+      }
+    }
+
+    /* ✅ 레이더 아래 화살표 + 안내 텍스트 */
+    .ctaArrow{
+      position:absolute;
+      left:50%;
+      bottom:10px;
+      transform:translateX(-50%);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:8px;
+      z-index:5;
+      pointer-events:none;
+      opacity:0;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .ctaArrow.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+    .ctaArrow .bubble{
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:-.2px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.22);
+      color:rgba(255,255,255,.88);
+      backdrop-filter: blur(6px);
+    }
+    .ctaArrow .arrow{
+      font-size:20px;
+      color:rgba(56,240,140,.95);
+      text-shadow:0 0 16px rgba(56,240,140,.35);
+      animation: bounce 1.05s ease-in-out infinite;
+      line-height:1;
+    }
+    @keyframes bounce{
+      0%,100%{transform:translateY(0); opacity:.75}
+      50%{transform:translateY(8px); opacity:1}
+    }
+
+    @media (min-width: 561px), (orientation: landscape){
+      .ctaArrow{display:none}
     }
   </style>
 </head>
@@ -336,7 +440,6 @@
           <div class="chip">📍 내 위치 주변 대학</div>
           <div class="chip">🔍 학교 검색</div>
           <div class="chip">🌍 2D 및 3D 지도</div>
-          
         </div>
 
         <div class="actions">
@@ -345,8 +448,9 @@
             <span>지금 당장 시작하기</span>
           </a>
 
-        
+          
 
+          
         </div>
 
         <div class="hint">
@@ -369,6 +473,11 @@
             <div class="line ok">[OK] 학교 좌표 로드 완료</div>
             <div class="line muted">[WAIT] location permission pending</div>
           </div>
+
+          <div class="ctaArrow" id="ctaArrow" aria-hidden="true">
+            <div class="bubble">아래 버튼을 눌러 스캔 시작 👇</div>
+            <div class="arrow">⬇︎</div>
+          </div>
         </div>
       </section>
     </div>
@@ -381,6 +490,7 @@
     const demoBtn = document.getElementById("demoBtn");
     const leftCard = document.getElementById("leftCard");
     const rightCard = document.getElementById("rightCard");
+    const ctaArrow = document.getElementById("ctaArrow");
 
     const basePool = [
       {cls:"muted", msg:"[BOOT] loading dataset..."},
@@ -405,6 +515,26 @@
     let logs = [];
     let i = 0;
     let bursting = false;
+
+    function isPortraitMobile(){
+      return window.matchMedia("(max-width: 560px) and (orientation: portrait)").matches;
+    }
+
+    function showCta(){
+      if (!ctaArrow) return;
+      if (!isPortraitMobile()) {
+        ctaArrow.classList.remove("show");
+        return;
+      }
+      ctaArrow.classList.add("show");
+    }
+
+    function hideCta(){
+      if (!ctaArrow) return;
+      ctaArrow.classList.remove("show");
+    }
+
+    setTimeout(showCta, 600);
 
     function tstamp(){
       return new Date().toTimeString().slice(0,8);
@@ -432,29 +562,39 @@
       if (logs.length > n) logs = logs.slice(-n);
     }
 
-    // ✅ 소리 없는 "진동" 연출: 카드 흔들기 (모바일에선 진동 API도 같이 시도)
     function vibrateFx(kind){
-      // 화면 흔들림
       leftCard.classList.remove("shake");
       rightCard.classList.remove("shake");
-      // reflow to restart animation
       void leftCard.offsetWidth;
       leftCard.classList.add("shake");
       rightCard.classList.add("shake");
 
-      // 모바일 진동 (지원 안 되면 무시됨)
       if (navigator.vibrate) {
-        if (kind === "burst") {
-          navigator.vibrate([40, 30, 60, 30, 40]);
-        } else if (kind === "clear") {
-          navigator.vibrate([20, 20, 20]);
-        } else {
-          navigator.vibrate(30);
-        }
+        if (kind === "burst") navigator.vibrate([40, 30, 60, 30, 40]);
+        else if (kind === "clear") navigator.vibrate([20, 20, 20]);
+        else navigator.vibrate(30);
       }
     }
 
-    // 평소: 900ms마다 1줄, 10줄 유지
+    function fitMobileHeights(){
+      const portrait = isPortraitMobile();
+      if (!portrait) {
+        scanText.style.height = "";
+        hideCta();
+        return;
+      }
+
+      const vh = window.innerHeight || 0;
+      const target = Math.max(115, Math.min(Math.floor(vh * 0.24), 180));
+      scanText.style.height = target + "px";
+
+      if (!bursting) showCta();
+    }
+
+    window.addEventListener("resize", fitMobileHeights, {passive:true});
+    window.addEventListener("orientationchange", fitMobileHeights, {passive:true});
+    fitMobileHeights();
+
     setInterval(() => {
       if (bursting) return;
       const item = basePool[i % basePool.length];
@@ -464,10 +604,11 @@
       render();
     }, 900);
 
-    // ✅ 진짜 "폭주" + ✅ 클리어 + ✅ 3~5초 정적 + ✅ 진동
     function burstSequence(reason){
       if (bursting) return;
       bursting = true;
+
+      hideCta();
 
       radar.classList.add("bursting");
       scanText.classList.add("flash");
@@ -477,7 +618,7 @@
       push("warn", `[BURST] high activity detected (${reason})`);
       render();
 
-      const burstTotal = 60; // 1초 내외 폭주 체감
+      const burstTotal = 60;
       let k = 0;
 
       const burstTimer = setInterval(() => {
@@ -504,21 +645,18 @@
           push("ok", "[OK] burst complete");
           render();
 
-          // CLR 출력 후 실제로 화면 비우고 3~5초 정적 대기
           setTimeout(() => {
             vibrateFx("clear");
             push("warn", "[CLR] buffer flushed");
             render();
 
             setTimeout(() => {
-              // 화면을 진짜로 비움
               logs = [];
               render();
 
-              const pause = 3000 + Math.random() * 2000; // ✅ 3~5초
+              const pause = 3000 + Math.random() * 2000;
 
               setTimeout(() => {
-                // 재부팅 느낌
                 push("muted", "[BOOT] resyncing...");
                 push("muted", "[BOOT] reloading modules...");
                 push("ok",    "[OK] engine online");
@@ -528,6 +666,11 @@
                 radar.classList.remove("bursting");
                 scanText.classList.remove("flash");
                 bursting = false;
+
+                setTimeout(() => {
+                  if (isPortraitMobile()) showCta();
+                }, 900);
+
               }, pause);
 
             }, 180);
@@ -536,13 +679,21 @@
       }, 16);
     }
 
-    // 자동 버스트: 10초마다 확률적으로
     setInterval(() => {
       if (Math.random() < 0.55) burstSequence("auto");
     }, 10000);
 
-    // 버튼 트리거
+    let ctaCooldownTimer = null;
+    function startCtaCooldown(ms){
+      hideCta();
+      if (ctaCooldownTimer) clearTimeout(ctaCooldownTimer);
+      ctaCooldownTimer = setTimeout(() => {
+        if (!bursting && isPortraitMobile()) showCta();
+      }, ms);
+    }
+
     locBtn.addEventListener("click", () => {
+      startCtaCooldown(20000);
       burstSequence("user");
 
       if (!navigator.geolocation){
@@ -565,12 +716,16 @@
           push("err", `[ERR] location denied (${err.code})`);
           keepLast(120);
           render();
+          setTimeout(() => {
+            if (!bursting && isPortraitMobile()) showCta();
+          }, 900);
         },
         {enableHighAccuracy:true, timeout:8000, maximumAge:10000}
       );
     });
 
     demoBtn.addEventListener("click", () => {
+      startCtaCooldown(20000);
       burstSequence("demo");
     });
   </script>

@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>3D 대학 지도 (VWorld)</title>
 
   <!-- ✅ 브이월드 WebGL 3D API 3.0 init -->
@@ -10,22 +10,49 @@
     src="https://map.vworld.kr/js/webglMapInit.js.do?version=3.0&apiKey=0168D7D6-3EC6-3C64-A691-149E7E7DD176"></script>
 
   <style>
-    body { margin:0; font-family: system-ui, AppleSDGothicNeo, Pretendard, sans-serif; background:#0b1220; }
+    :root{
+      --bg:#0b1220;
+      --panel: rgba(17, 24, 39, .88);
+      --panel2: rgba(255,255,255,.08);
+      --line: rgba(255,255,255,.12);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.70);
+      --accent: #60a5fa;
+
+      --r: 14px;
+      --pad: 10px;
+
+      /* 모바일 thumb dock 기본 높이(접힘/펼침은 JS에서 제어) */
+      --dock-collapsed: 64px;
+      --dock-expanded: 230px;
+      --dock-h: var(--dock-collapsed);
+
+      --console-h: 110px;
+      --console-font: 12px;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, AppleSDGothicNeo, Pretendard, sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
+    #vmap { position: absolute; inset: 0; }
+
+    /* ===== PC 기본 UI (기존 유지) ===== */
     #topbar {
       position: absolute; left: 12px; top: 12px; z-index: 9999;
       display:flex; gap:8px; align-items:center; flex-wrap:wrap;
       padding:10px; border-radius:14px;
-      background: rgba(17, 24, 39, .88); border:1px solid rgba(255,255,255,.10);
-      color:#fff;
+      background: var(--panel); border:1px solid rgba(255,255,255,.10);
+      color:var(--text);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
     }
     #topbar input {
       width: 260px; padding:10px 12px; border-radius:12px;
       border:1px solid rgba(255,255,255,.20); background: rgba(255,255,255,.08);
-      color:#fff; outline:none;
+      color:var(--text); outline:none;
     }
     #topbar button {
       padding:10px 12px; border-radius:12px; border:0; cursor:pointer;
-      background:#111827; color:#fff; font-weight:900;
+      background:#111827; color:var(--text); font-weight:900;
     }
     #topbar button:hover { opacity:.95; }
     #msg {
@@ -35,12 +62,178 @@
       border-radius:12px;
       background: rgba(255,255,255,.08);
       border:1px solid rgba(255,255,255,.10);
+      color: var(--muted);
     }
-    #vmap { position: absolute; inset: 0; }
+
     #orbitBtn {
       position:absolute; right:12px; top:12px; z-index:9999;
       padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
-      background:#111827; color:#fff; cursor:pointer; font-weight:900;
+      background:#111827; color:var(--text); cursor:pointer; font-weight:900;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    /* ===== 모바일 한 손 조작 모드 도킹 패널 ===== */
+    #dock {
+      position: absolute;
+      left: 0; right: 0;
+      bottom: 0;
+      z-index: 10000;
+      height: var(--dock-h);
+      padding: calc(var(--pad) + env(safe-area-inset-bottom)) var(--pad) var(--pad) var(--pad);
+      background: rgba(17,24,39,.92);
+      border-top: 1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transform: translateZ(0);
+      display: none; /* 기본은 PC에서 숨김, 모바일에서 표시 */
+      transition: height .18s ease;
+    }
+
+    #dockHandle {
+      position: absolute;
+      left: 50%;
+      top: 8px;
+      transform: translateX(-50%);
+      width: 92px;
+      height: 22px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: rgba(255,255,255,.75);
+      font-weight: 800;
+      user-select: none;
+      cursor: pointer;
+    }
+    #dockHandle .bar{
+      width: 32px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.35);
+    }
+    #dockHandle .arrow{
+      font-size: 14px;
+      line-height: 1;
+      opacity: .9;
+    }
+
+    #dockInner{
+      margin-top: 34px;
+      display: grid;
+      gap: 10px;
+    }
+
+    #dockForm{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      margin:0;
+    }
+    #dockForm input{
+      flex: 1;
+      min-width: 0;
+      padding: 12px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      outline:none;
+      font-size: 15px;
+    }
+    #dockForm button{
+      padding: 12px 12px;
+      border-radius: 12px;
+      border: 0;
+      cursor: pointer;
+      background: #111827;
+      color: var(--text);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    #dockForm button.secondary{
+      background: #334155;
+    }
+
+    #dockMsg{
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      max-height: 64px;
+      overflow: auto;
+    }
+
+    /* 콘솔(로그) */
+    #console {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.35);
+      padding: 10px 10px;
+      height: var(--console-h);
+      overflow: hidden;
+      display: grid;
+      gap: 8px;
+    }
+    #consoleHeader{
+      display:flex;
+      justify-content: space-between;
+      align-items: center;
+      color: rgba(255,255,255,.75);
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: .2px;
+    }
+    #consoleHeader .pill{
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      color: rgba(255,255,255,.70);
+    }
+    #logBox{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: var(--console-font);
+      line-height: 1.25;
+      color: rgba(210,255,232,.92);
+      white-space: pre;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    /* ===== 모바일에서만 적용 ===== */
+    @media (max-width: 820px) and (orientation: portrait) {
+      :root{
+        --console-h: 96px;
+        --console-font: 11px;
+      }
+
+      /* PC용 topbar는 모바일에선 숨기고 dock로 대체 */
+      #topbar { display:none; }
+      #dock { display:block; }
+
+      /* orbit 버튼은 “엄지에 닿게” 아래로 내리고 살짝 작게 */
+      #orbitBtn{
+        top: auto;
+        right: 12px;
+        bottom: calc(var(--dock-h) + 12px);
+        padding: 10px 12px;
+        border-radius: 12px;
+      }
+    }
+
+    /* 아주 작은 폰 */
+    @media (max-width: 420px) and (orientation: portrait) {
+      #dockForm button{
+        padding: 12px 10px;
+      }
     }
   </style>
 </head>
@@ -48,6 +241,7 @@
 <body>
   <div id="vmap"></div>
 
+  <!-- PC UI 유지 -->
   <div id="topbar">
     <form method="get" action="/3d" style="display:flex; gap:8px; align-items:center; margin:0;">
       <input name="name" value="{{ search or '' }}" placeholder="학교명 입력 (예: 서울대 / 연대)" />
@@ -55,6 +249,33 @@
       <button type="button" onclick="location.href='/'" style="background:#334155;">2D로</button>
     </form>
     <div id="msg">{{ message }}</div>
+  </div>
+
+  <!-- 모바일 thumb dock -->
+  <div id="dock" aria-label="Mobile Controls">
+    <div id="dockHandle" role="button" aria-label="Open controls">
+      <span class="bar"></span>
+      <span class="arrow" id="dockArrow">⬆️</span>
+      <span class="bar"></span>
+    </div>
+
+    <div id="dockInner">
+      <form id="dockForm" method="get" action="/3d" autocomplete="off">
+        <input name="name" value="{{ search or '' }}" placeholder="학교명 입력 (예: 서울대 / 연대)" />
+        <button type="submit">Search</button>
+        <button class="secondary" type="button" onclick="location.href='/'">2D로</button>
+      </form>
+
+      <div id="dockMsg">{{ message }}</div>
+
+      <div id="console" aria-label="Console">
+        <div id="consoleHeader">
+          <div>RADAR CONSOLE</div>
+          <div class="pill" id="consoleStatus">IDLE</div>
+        </div>
+        <div id="logBox"></div>
+      </div>
+    </div>
   </div>
 
   <button id="orbitBtn" type="button">⟳ 360° Rotate</button>
@@ -71,8 +292,6 @@
     // =========================
     // 1) VWorld 3D 지도 생성
     // =========================
-    // VWorld 샘플에서 options 구조는 환경마다 조금씩 다를 수 있음.
-    // 기본: container를 vmap에 붙이고, center/zoom/tilt 정도만 쓰면 안정적으로 가는 편.
     const options = {
       mapId: "vmap",
       initPosition: new vw.CameraPosition(
@@ -88,7 +307,7 @@
     map.start();
 
     // =========================
-    // 2) Cesium viewer 얻기 (브이월드 래퍼마다 노출이 달라서 안전하게)
+    // 2) Cesium viewer 얻기
     // =========================
     function getCesiumViewer() {
       return (
@@ -101,7 +320,6 @@
       );
     }
 
-    // viewer가 바로 안 잡히는 경우가 있어서 약간 기다렸다가 재시도
     function waitViewer(maxTry=30) {
       return new Promise((resolve) => {
         let t = 0;
@@ -117,10 +335,9 @@
     }
 
     // =========================
-    // 3) KML 로드 + 클릭 확대 + 360도 회전
+    // 3) KML + 클릭 확대 + 360 회전
     // =========================
     let kmlDataSource = null;
-
     let orbitOn = false;
     let orbitTick = null;
     let orbitTarget = null; // Cartesian3
@@ -143,8 +360,6 @@
 
     function flyToEntity(viewer, entity){
       if (!viewer || !entity) return;
-
-      // Cesium에서 flyTo는 흔한 방식. :contentReference[oaicite:2]{index=2}
       try {
         viewer.flyTo(entity, {
           duration: 1.15,
@@ -158,11 +373,9 @@
         return;
       } catch (e) {}
 
-      // fallback: position 기반
       const t = viewer.clock.currentTime;
       const pos = entity.position && entity.position.getValue(t);
       if (!pos) return;
-
       viewer.camera.flyTo({ destination: pos, duration: 1.15 });
       orbitTarget = pos;
     }
@@ -178,7 +391,6 @@
           return;
         }
 
-        // fallback: KML 엔티티 중 클릭 지점과 가장 가까운 핀 찾기
         if (kmlDataSource && kmlDataSource.entities) {
           const t = viewer.clock.currentTime;
           const ray = viewer.camera.getPickRay(click.position);
@@ -244,35 +456,223 @@
       orbitOn = false;
     }
 
+    // =========================
+    // 4) 모바일 도킹 패널 + 지도 리사이즈 트리거
+    // =========================
+    const dock = document.getElementById("dock");
+    const dockArrow = document.getElementById("dockArrow");
+    const handle = document.getElementById("dockHandle");
+
+    let dockOpen = false;
+
+    function isMobilePortrait(){
+      return window.matchMedia("(max-width: 820px) and (orientation: portrait)").matches;
+    }
+
+    function setDock(open){
+      dockOpen = !!open;
+      const root = document.documentElement;
+
+      if(!isMobilePortrait()) return;
+
+      const h = dockOpen ? getExpandedDockHeight() : getCollapsedDockHeight();
+      root.style.setProperty("--dock-h", h + "px");
+      dockArrow.textContent = dockOpen ? "⬇️" : "⬆️";
+
+      // 지도 빈공간 없애기: Cesium resize + 렌더 트리거
+      const viewer = getCesiumViewer();
+      if(viewer){
+        try { viewer.resize(); } catch(e) {}
+        try { viewer.scene.requestRender && viewer.scene.requestRender(); } catch(e) {}
+      }
+    }
+
+    function getCollapsedDockHeight(){
+      return 64 + (safeBottom());
+    }
+
+    function getExpandedDockHeight(){
+      // 화면 높이에 따라 자동 조절(너무 커져서 지도 못쓰는거 방지)
+      const vh = window.innerHeight || 700;
+      const base = Math.min(260, Math.max(210, Math.round(vh * 0.34)));
+      return base + safeBottom();
+    }
+
+    function safeBottom(){
+      // env(safe-area-inset-bottom) 값을 JS로 못 읽으니 대충 보정값
+      return 14;
+    }
+
+    handle.addEventListener("click", ()=> setDock(!dockOpen));
+
+    // 화면 회전/리사이즈 시 재계산
+    window.addEventListener("resize", ()=>{
+      if(isMobilePortrait()){
+        setDock(dockOpen);
+      } else {
+        // PC로 돌아가면 CSS 변수 초기화
+        document.documentElement.style.setProperty("--dock-h", getCollapsedDockHeight() + "px");
+      }
+    }, { passive:true });
+
+    // =========================
+    // 5) 콘솔 로그 연출 (폭주 -> 클리어 -> 텀 -> 재시작)
+    // =========================
+    const logBox = document.getElementById("logBox");
+    const consoleStatus = document.getElementById("consoleStatus");
+
+    function nowTime(){
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2,"0");
+      const mm = String(d.getMinutes()).padStart(2,"0");
+      const ss = String(d.getSeconds()).padStart(2,"0");
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function pushLog(line){
+      if(!logBox) return;
+      const lines = (logBox.textContent || "").split("\n").filter(Boolean);
+      lines.push(line);
+      // 너무 길면 자르기
+      while(lines.length > 24) lines.shift();
+      logBox.textContent = lines.join("\n");
+    }
+
+    function clearLogs(){
+      if(!logBox) return;
+      logBox.textContent = "";
+    }
+
+    function vibrate(ms){
+      try {
+        if (navigator.vibrate) navigator.vibrate(ms);
+      } catch(e) {}
+    }
+
+    const LOG_POOL = [
+      "Ping: vw.Map init handshake OK",
+      "Cesium: scene ready",
+      "Radar sweep: bearing sync",
+      "Tiles: stream buffer warm",
+      "Nav: gesture map bound",
+      "KML: entity index build",
+      "Trace: packet checksum OK",
+      "Focus: target lock probe",
+      "Render: requestRender()",
+      "I/O: low-latency channel"
+    ];
+
+    let logTimer = null;
+
+    function startLogShow(){
+      if(!logBox || !consoleStatus) return;
+      if(logTimer) return;
+
+      consoleStatus.textContent = "RUN";
+      logTimer = setInterval(()=>{
+        const msg = LOG_POOL[Math.floor(Math.random()*LOG_POOL.length)];
+        pushLog(`[${nowTime()}] ${msg}`);
+      }, 420);
+    }
+
+    function stopLogShow(){
+      if(logTimer){
+        clearInterval(logTimer);
+        logTimer = null;
+      }
+    }
+
+    async function burstCycle(){
+      if(!logBox || !consoleStatus) return;
+
+      // 평상시 로그
+      startLogShow();
+
+      // 3~6초 뒤 폭주
+      const baseDelay = 3000 + Math.random()*3000;
+      setTimeout(async ()=>{
+        consoleStatus.textContent = "BURST";
+        vibrate(45);
+
+        // 폭주: 짧은 간격으로 여러 줄
+        stopLogShow();
+        const burstCount = 30 + Math.floor(Math.random()*20);
+        for(let i=0;i<burstCount;i++){
+          const msg = LOG_POOL[Math.floor(Math.random()*LOG_POOL.length)];
+          pushLog(`[${nowTime()}] >>> ${msg} #${String(i+1).padStart(2,"0")}`);
+          // 폭주 속도
+          await new Promise(r=>setTimeout(r, 35 + Math.random()*25));
+        }
+
+        // 클리어 연출
+        consoleStatus.textContent = "CLEAR";
+        vibrate(25);
+        await new Promise(r=>setTimeout(r, 220));
+        clearLogs();
+
+        // 3~5초 텀
+        consoleStatus.textContent = "WAIT";
+        await new Promise(r=>setTimeout(r, 3000 + Math.random()*2000));
+
+        // 다시 시작
+        consoleStatus.textContent = "RUN";
+        startLogShow();
+
+        // 다음 사이클 재귀
+        burstCycle();
+      }, baseDelay);
+    }
+
+    // 모바일일 때만 콘솔 돌리기 (PC는 조용히)
+    function bootConsoleIfMobile(){
+      if(isMobilePortrait()){
+        burstCycle();
+      } else {
+        stopLogShow();
+      }
+    }
+
+    // =========================
+    // 6) 부트
+    // =========================
     async function boot(){
       const viewer = await waitViewer(50);
       if(!viewer){
-        document.getElementById("msg").textContent = "Cesium viewer 접근 실패(브이월드 초기화 확인 필요)";
+        const el = document.getElementById("msg");
+        const el2 = document.getElementById("dockMsg");
+        if(el) el.textContent = "Cesium viewer 접근 실패(브이월드 초기화 확인 필요)";
+        if(el2) el2.textContent = "Cesium viewer 접근 실패(브이월드 초기화 확인 필요)";
         return;
+      }
+
+      // 초기 모바일 dock 높이 세팅
+      if(isMobilePortrait()){
+        document.documentElement.style.setProperty("--dock-h", getCollapsedDockHeight() + "px");
+        setDock(false);
       }
 
       // KML 로드
       if (KML_URL) {
         try {
-          // 브이월드 3.0은 Cesium을 별도 선언 없이 일부 기능을 사용할 수 있다고 안내됨. :contentReference[oaicite:3]{index=3}
           const ds = await Cesium.KmlDataSource.load(KML_URL, {
             camera: viewer.scene.camera,
             canvas: viewer.scene.canvas
           });
           kmlDataSource = ds;
           viewer.dataSources.add(ds);
-
-          // 검색 결과 있으면 KML 전체로 한번 줌
           try { await viewer.zoomTo(ds); } catch(e) {}
         } catch (e) {
-          document.getElementById("msg").textContent = "KML 로드 실패: " + String(e);
+          const m = "KML 로드 실패: " + String(e);
+          const el = document.getElementById("msg");
+          const el2 = document.getElementById("dockMsg");
+          if(el) el.textContent = m;
+          if(el2) el2.textContent = m;
         }
       }
 
-      // 핀 클릭 확대 설치
       installClickZoom(viewer);
 
-      // 360° 회전 토글 버튼
+      // 360° 회전 토글
       const orbitBtn = document.getElementById("orbitBtn");
       orbitBtn.addEventListener("click", ()=>{
         if(orbitOn){
@@ -283,6 +683,10 @@
           orbitBtn.textContent = "■ Stop";
         }
       });
+
+      // 콘솔 시작
+      bootConsoleIfMobile();
+      window.addEventListener("resize", bootConsoleIfMobile, { passive:true });
     }
 
     boot();
