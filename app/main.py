@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from pathlib import Path
 from functools import lru_cache
+import folium
 import os
 import re
 import math
@@ -20,6 +21,120 @@ from google import genai
 
 
 app = FastAPI()
+
+
+
+
+@app.get("/", response_class=HTMLResponse)
+def landing(request: Request):
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+@app.get("/app", response_class=HTMLResponse)
+def app_home(request: Request):
+    ctx = base_ctx(request)  # 네 기본 컨텍스트 함수 쓰기
+    return templates.TemplateResponse("index.html", ctx)
+
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    d1 = math.radians(lat2 - lat1)
+    d2 = math.radians(lon2 - lon1)
+    a = math.sin(d1/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(d2/2)**2
+    return 2 * R * math.asin(math.sqrt(a))
+
+def detect_lat_lng_cols(df):
+    candidates_lat = ["위도", "lat", "LAT", "latitude", "y", "Y"]
+    candidates_lng = ["경도", "lng", "LNG", "longitude", "x", "X"]
+    lat_col = next((c for c in candidates_lat if c in df.columns), None)
+    lng_col = next((c for c in candidates_lng if c in df.columns), None)
+    return lat_col, lng_col
+
+def base_ctx(request: Request):
+    # ✅ index.html이 참조하는 변수들 기본값을 항상 제공 (Jinja 터짐 방지)
+    return {
+        "request": request,
+        "map": None,
+        "message": None,
+        "region_options": [],
+        "filter_region": "",
+        "search": "",
+        "cmp_a": "",
+        "cmp_b": "",
+        "near_name": "",
+        "near_radius": "5",
+        "compare": None,
+    }
+
+@app.get("/nearby_geo", response_class=HTMLResponse)
+def nearby_geo(
+    request: Request,
+    lat: float = Query(...),
+    lng: float = Query(...),
+    radius_km: float = Query(5.0, ge=1.0, le=50.0),
+):
+    ctx = base_ctx(request)
+    ctx["near_radius"] = str(radius_km)
+
+    try:
+        df = load_school_data()  # ✅ 네 프로젝트 함수
+        lat_col, lng_col = detect_lat_lng_cols(df)
+
+        if not lat_col or not lng_col:
+            ctx["message"] = f"위도/경도 컬럼을 못 찾음. df.columns={list(df.columns)}"
+            return templates.TemplateResponse("index.html", ctx)
+
+        temp = df.copy()
+        temp[lat_col] = temp[lat_col].astype(float)
+        temp[lng_col] = temp[lng_col].astype(float)
+
+        temp["__dist_km"] = temp.apply(
+            lambda r: haversine_km(lat, lng, float(r[lat_col]), float(r[lng_col])),
+            axis=1
+        )
+        near = temp[temp["__dist_km"] <= radius_km].sort_values("__dist_km").head(80)
+
+        m = folium.Map(location=[lat, lng], zoom_start=13, control_scale=True)
+
+        folium.Marker(
+            [lat, lng],
+            tooltip="내 위치",
+            popup=f"내 위치 (반경 {radius_km}km)",
+            icon=folium.Icon(color="red"),
+        ).add_to(m)
+
+        folium.Circle(
+            location=[lat, lng],
+            radius=radius_km * 1000,
+            color="#2563eb",
+            fill=True,
+            fill_opacity=0.08,
+        ).add_to(m)
+
+        # 학교명/주소 컬럼 자동 대응
+        name_col = "학교이름" if "학교이름" in near.columns else ("학교명" if "학교명" in near.columns else None)
+        addr_col = "주소" if "주소" in near.columns else None
+
+        for _, row in near.iterrows():
+            nm = str(row[name_col]) if name_col else "대학교"
+            ad = str(row[addr_col]) if addr_col else ""
+            d = float(row["__dist_km"])
+            folium.Marker(
+                [float(row[lat_col]), float(row[lng_col])],
+                tooltip=f"{nm} ({d:.2f}km)",
+                popup=f"{nm}<br>{ad}<br><b>{d:.2f} km</b>",
+                icon=folium.Icon(color="blue"),
+            ).add_to(m)
+
+        ctx["map"] = m._repr_html_()
+        ctx["message"] = f"내 위치 기준 반경 {radius_km}km 내 대학 {len(near)}개 표시!"
+        return templates.TemplateResponse("index.html", ctx)
+
+    except Exception as e:
+        # ✅ 흰 화면 대신 에러를 메시지로 표시
+        ctx["message"] = f"/nearby_geo 서버 에러: {type(e).__name__}: {e}"
+        return templates.TemplateResponse("index.html", ctx)
 
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -473,6 +588,7 @@ def search_school(request: Request, name: str = ""):
                 r = hits.iloc[0]
                 region = str(r.get("region", "Unknown"))
                 m = folium.Map(location=[r["y"], r["x"]], zoom_start=16, control_scale=True)
+  
                 folium.Marker(
                     [r["y"], r["x"]],
                     tooltip=str(r["학교이름"]),
