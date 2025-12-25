@@ -2,7 +2,8 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
   <title>전국의 대학교 위치 시각화</title>
 
   <style>
@@ -78,6 +79,53 @@
       border:1px solid #e5e7eb; background:#fff; color:#111827; cursor:pointer; font-weight:900;
     }
     .action-btn:hover { background:#f8fafc; }
+
+
+    /* ===== 모바일 지도 해상도 보정 패치 ===== */
+
+/* 페이지 높이 기준 */
+html, body { height: 100%; }
+
+/* 모바일에서 2열 → 1열 */
+@media (max-width: 900px) {
+  main {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 12px;
+  }
+}
+
+/* iOS 입력 시 자동 확대 방지 */
+input, select, button {
+  font-size: 16px;
+}
+
+/* 지도 영역 높이 강제 */
+#map-container {
+  min-height: 60vh;
+  height: calc(100dvh - 140px);
+}
+
+/* Folium 내부 지도 div 강제 확장 (핵심) */
+#map-container > div {
+  height: 100% !important;
+}
+
+/* 혹시 iframe일 경우까지 대비 */
+#map-container iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* 작은 화면에서는 지도 더 크게 */
+@media (max-width: 900px) {
+  #map-container {
+    height: 70dvh;
+    min-height: 420px;
+  }
+}
+
   </style>
 </head>
 
@@ -212,7 +260,7 @@
     </section>
 
     <section class="panel">
-      <div class="map">
+      <div class="map" id = "map-container">
         {% if map %}
           {{ map | safe }}
         {% else %}
